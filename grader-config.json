@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "1.0",
+  "templateSlug": "testing-basico",
+  "evaluationBlocks": [
+    {
+      "blockId": "auto",
+      "evaluationType": "automated_pipeline",
+      "metrics": [
+        {
+          "metricKey": "test_coverage",
+          "worker": "TestWorker",
+          "weight": 40,
+          "threshold": 0.7,
+          "config": {
+            "coverageCommand": "pnpm test:coverage",
+            "coverageFormat": "lcov",
+            "minLineCoverage": 70,
+            "minBranchCoverage": 70
+          }
+        },
+        {
+          "metricKey": "test_pass_rate",
+          "worker": "TestWorker",
+          "weight": 35,
+          "threshold": 1.0,
+          "config": {
+            "testCommand": "pnpm test",
+            "testRunner": "jest"
+          }
+        },
+        {
+          "metricKey": "lint_violations",
+          "worker": "LintWorker",
+          "weight": 25,
+          "threshold": 0.0,
+          "config": {
+            "lintCommand": "pnpm lint",
+            "linter": "eslint"
+          }
+        }
+      ]
+    }
+  ]
+}

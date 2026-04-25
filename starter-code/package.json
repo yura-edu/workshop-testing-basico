@@ -1,0 +1,23 @@
+{
+  "name": "workshop-testing-basico",
+  "version": "1.0.0",
+  "description": "Starter code for the Testing Básico workshop",
+  "scripts": {
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src/"
+  },
+  "devDependencies": {
+    "eslint": "^9.0.0",
+    "jest": "^29.0.0"
+  },
+  "jest": {
+    "collectCoverageFrom": ["src/**/*.js", "!src/**/*.test.js"],
+    "coverageThreshold": {
+      "global": {
+        "lines": 70,
+        "branches": 70
+      }
+    }
+  }
+}

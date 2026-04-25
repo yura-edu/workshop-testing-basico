@@ -1,0 +1,134 @@
+name: Grader
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Install dependencies
+        working-directory: starter-code
+        run: pnpm install --frozen-lockfile
+
+      # ── Métrica: lint_violations ───────────────────────────────────────────
+      - name: Run ESLint
+        id: lint
+        working-directory: starter-code
+        run: |
+          set +e
+          OUTPUT=$(pnpm lint --format json 2>&1)
+          EXIT_CODE=$?
+          set -e
+
+          VIOLATIONS=$(echo "$OUTPUT" | node -e "
+            const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+            const total = data.reduce((s,f) => s + f.errorCount, 0);
+            console.log(total);
+          " 2>/dev/null || echo "0")
+
+          echo "violations=$VIOLATIONS" >> "$GITHUB_OUTPUT"
+          if [ "$VIOLATIONS" -eq 0 ]; then
+            echo "score=1.0" >> "$GITHUB_OUTPUT"
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+            echo "✅ No lint violations"
+          else
+            echo "score=0.0" >> "$GITHUB_OUTPUT"
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+            echo "❌ $VIOLATIONS lint violation(s)"
+          fi
+
+      # ── Métricas: test_pass_rate + test_coverage ───────────────────────────
+      - name: Run tests with coverage
+        id: tests
+        working-directory: starter-code
+        run: |
+          set +e
+          pnpm test:coverage --ci --json --outputFile=test-results.json --coverageReporters=json-summary 2>&1
+          EXIT_CODE=$?
+          set -e
+
+          # Parse test results
+          if [ -f test-results.json ]; then
+            PASS_RATE=$(node -e "
+              const r = require('./test-results.json');
+              const total = r.numTotalTests;
+              const passed = r.numPassedTests;
+              console.log(total > 0 ? (passed / total).toFixed(2) : '0.00');
+            " 2>/dev/null || echo "0.00")
+          else
+            PASS_RATE="0.00"
+          fi
+
+          # Parse coverage summary
+          COVERAGE="0.00"
+          if [ -f coverage/coverage-summary.json ]; then
+            COVERAGE=$(node -e "
+              const c = require('./coverage/coverage-summary.json');
+              const lines = c.total.lines.pct;
+              const branches = c.total.branches.pct;
+              console.log(Math.min(lines, branches).toFixed(2));
+            " 2>/dev/null || echo "0.00")
+          fi
+
+          echo "pass_rate=$PASS_RATE" >> "$GITHUB_OUTPUT"
+          echo "coverage=$COVERAGE" >> "$GITHUB_OUTPUT"
+          echo "pass_rate_passed=$([ "$(echo "$PASS_RATE >= 1.0" | bc -l)" -eq 1 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "coverage_passed=$([ "$(echo "$COVERAGE >= 70" | bc -l)" -eq 1 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+          echo "Pass rate: $PASS_RATE | Coverage: $COVERAGE%"
+
+      # ── Reporte final ─────────────────────────────────────────────────────
+      - name: Build grader report
+        run: |
+          cat > grader-report.json << EOF
+          {
+            "schemaVersion": "1.0",
+            "templateSlug": "testing-basico",
+            "runId": "${{ github.run_id }}",
+            "sha": "${{ github.sha }}",
+            "metrics": [
+              {
+                "metricKey": "test_pass_rate",
+                "score": ${{ steps.tests.outputs.pass_rate }},
+                "passed": ${{ steps.tests.outputs.pass_rate_passed }},
+                "unavailable": false
+              },
+              {
+                "metricKey": "test_coverage",
+                "score": ${{ steps.tests.outputs.coverage }},
+                "passed": ${{ steps.tests.outputs.coverage_passed }},
+                "unavailable": false
+              },
+              {
+                "metricKey": "lint_violations",
+                "score": ${{ steps.lint.outputs.score }},
+                "passed": ${{ steps.lint.outputs.passed }},
+                "unavailable": false
+              }
+            ]
+          }
+          EOF
+          cat grader-report.json
+
+      - name: Upload grader report
+        uses: actions/upload-artifact@v4
+        with:
+          name: grader-report
+          path: starter-code/grader-report.json
